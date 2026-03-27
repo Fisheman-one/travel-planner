@@ -42,3 +42,5 @@ Thumbs.db
 *.pem
 coverage/
 .nyc_output/
+
+.vercel

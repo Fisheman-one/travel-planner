@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
+import html2canvas from "html2canvas";
 import { usePlanStore } from "@/store/planStore";
 import { useWizardStore } from "@/store/wizardStore";
 import { generateMockPlan } from "@/data/mock-itineraries";
@@ -12,9 +13,87 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Chip";
 import { Progress } from "@/components/ui/Progress";
-import { ArrowLeft, Map, List, Download, Share2, Loader2 } from "lucide-react";
+import { ArrowLeft, Map, List, Download, Share2, Loader2, Check } from "lucide-react";
 import { formatCurrency, getDayColor } from "@/lib/utils";
 import { TravelMap } from "@/components/map/TravelMap";
+import { toast } from "sonner";
+import { GlamorousLoading } from "@/components/ui/GlamorousLoading";
+import { ParallaxBackground } from "@/components/ui/ParallaxBackground";
+import { FloatingTipsCard } from "@/components/ui/FloatingTipsCard";
+
+// City images for parallax background
+const CITY_IMAGES: Record<string, string[]> = {
+  上海: [
+    "https://images.unsplash.com/photo-1537531383496-f4749b8032cf?w=400&q=60",
+    "https://images.unsplash.com/photo-1567612529009-afe25813a308?w=400&q=60",
+    "https://images.unsplash.com/photo-1547619292-8816ee7cdd50?w=400&q=60",
+    "https://images.unsplash.com/photo-1557804506-669a67965ba0?w=400&q=60",
+    "https://images.unsplash.com/photo-1569761208737-3c4a5c99fb2a?w=400&q=60",
+    "https://images.unsplash.com/photo-1551269901-5c5e14c25df7?w=400&q=60",
+    "https://images.unsplash.com/photo-1596711715226-ac5c2f5a8a77?w=400&q=60",
+    "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=60",
+  ],
+  北京: [
+    "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?w=400&q=60",
+    "https://images.unsplash.com/photo-1590548784585-643d2b9f2925?w=400&q=60",
+    "https://images.unsplash.com/photo-1569744384910-4e1a62c31e04?w=400&q=60",
+    "https://images.unsplash.com/photo-1598890777032-a5f6f3eb1508?w=400&q=60",
+    "https://images.unsplash.com/photo-1569761208737-3c4a5c99fb2a?w=400&q=60",
+    "https://images.unsplash.com/photo-1551269901-5c5e14c25df7?w=400&q=60",
+    "https://images.unsplash.com/photo-1596711715226-ac5c2f5a8a77?w=400&q=60",
+    "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=60",
+  ],
+  杭州: [
+    "https://images.unsplash.com/photo-1599571234909-29ed5d1321d6?w=400&q=60",
+    "https://images.unsplash.com/photo-1593048688881-1b13e32f4e98?w=400&q=60",
+    "https://images.unsplash.com/photo-1547756434-6f54b8d7a876?w=400&q=60",
+    "https://images.unsplash.com/photo-1598890777032-a5f6f3eb1508?w=400&q=60",
+    "https://images.unsplash.com/photo-1599571234909-29ed5d1321d6?w=400&q=60",
+    "https://images.unsplash.com/photo-1593048688881-1b13e32f4e98?w=400&q=60",
+    "https://images.unsplash.com/photo-1547756434-6f54b8d7a876?w=400&q=60",
+    "https://images.unsplash.com/photo-1598890777032-a5f6f3eb1508?w=400&q=60",
+  ],
+  成都: [
+    "https://images.unsplash.com/photo-1618293112488-2c2e8b7d6b5c?w=400&q=60",
+    "https://images.unsplash.com/photo-1584464491033-06628f3a6b7b?w=400&q=60",
+    "https://images.unsplash.com/photo-1600093463592-8e36ae1ef3b2?w=400&q=60",
+    "https://images.unsplash.com/photo-1621252179027-94459d27d3ee?w=400&q=60",
+    "https://images.unsplash.com/photo-1618293112488-2c2e8b7d6b5c?w=400&q=60",
+    "https://images.unsplash.com/photo-1584464491033-06628f3a6b7b?w=400&q=60",
+    "https://images.unsplash.com/photo-1600093463592-8e36ae1ef3b2?w=400&q=60",
+    "https://images.unsplash.com/photo-1621252179027-94459d27d3ee?w=400&q=60",
+  ],
+  西安: [
+    "https://images.unsplash.com/photo-1569761208737-3c4a5c99fb2a?w=400&q=60",
+    "https://images.unsplash.com/photo-1551269901-5c5e14c25df7?w=400&q=60",
+    "https://images.unsplash.com/photo-1596711715226-ac5c2f5a8a77?w=400&q=60",
+    "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=60",
+    "https://images.unsplash.com/photo-1569761208737-3c4a5c99fb2a?w=400&q=60",
+    "https://images.unsplash.com/photo-1551269901-5c5e14c25df7?w=400&q=60",
+    "https://images.unsplash.com/photo-1596711715226-ac5c2f5a8a77?w=400&q=60",
+    "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=60",
+  ],
+  大理: [
+    "https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=400&q=60",
+    "https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400&q=60",
+    "https://images.unsplash.com/photo-1528181304800-259b08848526?w=400&q=60",
+    "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&q=60",
+    "https://images.unsplash.com/photo-1558618047-3c8c76ca7d13?w=400&q=60",
+    "https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=400&q=60",
+    "https://images.unsplash.com/photo-1528181304800-259b08848526?w=400&q=60",
+    "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400&q=60",
+  ],
+  default: [
+    "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=400&q=60",
+    "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=400&q=60",
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=60",
+    "https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=400&q=60",
+    "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=400&q=60",
+    "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=400&q=60",
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=400&q=60",
+    "https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=400&q=60",
+  ],
+};
 
 export default function ResultPage() {
   const params = useParams();
@@ -71,63 +150,96 @@ export default function ResultPage() {
   };
 
   const handleShare = async () => {
-    if (navigator.share && result) {
+    if (result && preferences.destination?.city) {
+      // Create shareable data
+      const shareData = {
+        d: preferences.destination.city,
+        days: result.days.map((day) => ({
+          n: day.dayNumber,
+          t: day.theme,
+          a: day.attractions.slice(0, 3).map((attr) => attr.name), // Limit to first 3 attractions
+        })),
+        b: result.days.reduce((sum, day) => sum + (day.dailyBudget || 0), 0),
+      };
+
+      const encoded = btoa(encodeURIComponent(JSON.stringify(shareData)));
+      const shareUrl = `${window.location.origin}/plan/shared?data=${encoded}`;
+
+      // Try native share first (mobile)
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: `${preferences.destination.city}旅行计划`,
+            text: `查看我在${preferences.destination.city}的${result.days.length}天旅行计划！`,
+            url: shareUrl,
+          });
+          return;
+        } catch (err) {
+          // User cancelled or not supported, fall back to clipboard
+        }
+      }
+
+      // Fall back to copying URL
       try {
-        await navigator.share({
-          title: "我的旅行计划",
-          text: `${preferences.destination?.city} · ${result.days.length}天行程`,
-        });
-      } catch (err) {
-        console.log("Share cancelled");
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success("分享链接已复制到剪贴板！");
+      } catch {
+        toast.error("分享失败，请重试");
       }
     }
   };
 
+  const handleDownload = async () => {
+    const itineraryEl = document.getElementById("itinerary-export");
+    if (!itineraryEl) {
+      toast.error("下载失败，请重试");
+      return;
+    }
+
+    try {
+      toast.loading("正在生成图片...");
+
+      const canvas = await html2canvas(itineraryEl, {
+        backgroundColor: "#FAFBFC",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        windowWidth: 1200,
+        windowHeight: itineraryEl.scrollHeight,
+      });
+
+      const link = document.createElement("a");
+      link.download = `${preferences.destination?.city || "旅行"}-${result?.days.length || 0}天行程.png`;
+      link.href = canvas.toDataURL("image/png", 1.0);
+      link.click();
+
+      toast.success("图片下载成功！");
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.error("下载失败，请重试");
+    }
+  };
+
   if (isGenerating) {
+    // Calculate progress based on the index of current message in steps
+    const progressMessages = [
+      "正在分析您的偏好...",
+      "正在搜索热门景点...",
+      "正在规划每日行程...",
+      "正在计算最优路线...",
+      "正在筛选特色餐厅...",
+      "正在生成最终方案...",
+    ];
+    const messageIndex = progressMessages.indexOf(progressMessage);
+    const progressPercent = messageIndex >= 0 ? 15 + messageIndex * 15 : 15;
+
     return (
-      <div className="min-h-screen bg-surface flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-            className="w-20 h-20 mx-auto mb-8"
-          >
-            <svg viewBox="0 0 100 100" className="w-full h-full">
-              <circle
-                cx="50"
-                cy="50"
-                r="45"
-                fill="none"
-                stroke="#E5E5E5"
-                strokeWidth="6"
-              />
-              <motion.circle
-                cx="50"
-                cy="50"
-                r="45"
-                fill="none"
-                stroke="#C9A962"
-                strokeWidth="6"
-                strokeLinecap="round"
-                strokeDasharray="283"
-                initial={{ strokeDashoffset: 283 }}
-                animate={{ strokeDashoffset: 0 }}
-                transition={{ duration: 4, ease: "easeInOut" }}
-                transform="rotate(-90 50 50)"
-              />
-            </svg>
-          </motion.div>
-
-          <h2 className="text-2xl font-display font-bold text-primary mb-3">
-            正在为您规划专属行程
-          </h2>
-          <p className="text-text-muted mb-8">{progressMessage}</p>
-
-          <div className="space-y-4">
-            <Progress value={(progressMessage.length / 100) * 100} size="md" />
-          </div>
-        </div>
-      </div>
+      <GlamorousLoading
+        city={preferences.destination?.city || "上海"}
+        progress={progressPercent}
+        message={progressMessage}
+        cityImages={CITY_IMAGES[preferences.destination?.city || "default"] || CITY_IMAGES.default}
+      />
     );
   }
 
@@ -149,7 +261,10 @@ export default function ResultPage() {
     result.totalBudget ||
     result.days.reduce((sum, day) => sum + (day.dailyBudget || 0), 0);
 
+  const cityImages = CITY_IMAGES[preferences.destination?.city || "default"] || CITY_IMAGES.default;
+
   return (
+    <ParallaxBackground images={cityImages}>
     <div className="min-h-screen bg-surface">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
@@ -169,7 +284,7 @@ export default function ResultPage() {
               <Button variant="ghost" size="sm" onClick={handleShare}>
                 <Share2 className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={handleDownload}>
                 <Download className="w-4 h-4" />
               </Button>
             </div>
@@ -244,7 +359,7 @@ export default function ResultPage() {
       </div>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <main id="itinerary-export" className="max-w-6xl mx-auto px-4 sm:px-6 py-8 pb-32">
         <AnimatePresence mode="wait">
           {activeTab === "itinerary" ? (
             <motion.div
@@ -366,7 +481,7 @@ export default function ResultPage() {
       </main>
 
       {/* Action Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 z-50">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="text-sm text-text-muted">
             行程已生成，共{" "}
@@ -378,18 +493,22 @@ export default function ResultPage() {
             个景点
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" size="md">
+            <Button variant="outline" size="md" onClick={handleDownload}>
               <Download className="w-4 h-4 mr-2" />
               下载行程
             </Button>
-            <Button size="md">
+            <Button size="md" onClick={handleShare}>
               <Share2 className="w-4 h-4 mr-2" />
               分享行程
             </Button>
           </div>
         </div>
       </div>
+
+      {/* Floating Tips Card with Weather */}
+      <FloatingTipsCard city={preferences.destination?.city || "上海"} />
     </div>
+    </ParallaxBackground>
   );
 }
 

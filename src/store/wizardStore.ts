@@ -1,5 +1,12 @@
 import { create } from "zustand";
-import { PlanPreferences, WizardStep } from "@/types/plan";
+import {
+  PlanPreferences,
+  WizardStep,
+  BudgetLevel,
+  Relationship,
+  AgeRange,
+  FitnessLevel,
+} from "@/types/plan";
 
 interface WizardState {
   currentStep: WizardStep;
@@ -40,7 +47,7 @@ const STEP_LABELS: Record<WizardStep, string> = {
   special: "特殊需求",
 };
 
-const initialPreferences: Partial<PlanPreferences> = {
+const initialPreferences = {
   destination: {
     city: "",
     country: "中国",
@@ -52,35 +59,35 @@ const initialPreferences: Partial<PlanPreferences> = {
     days: 0,
   },
   budget: {
-    level: "moderate",
-    amount: undefined,
+    level: undefined as BudgetLevel | undefined,
+    amount: undefined as number | undefined,
   },
   companions: {
     count: 1,
-    relationship: "solo",
-    ageRange: "26-30",
+    relationship: undefined as Relationship | undefined,
+    ageRange: undefined as AgeRange | undefined,
   },
   mobility: {
-    fitnessLevel: "moderate",
+    fitnessLevel: undefined as FitnessLevel | undefined,
     mobilityAid: false,
     walkingTolerance: 5,
   },
   food: {
-    preferences: [],
-    budget: "moderate",
-    mustTry: [],
+    preferences: [] as string[],
+    budget: "moderate" as const,
+    mustTry: [] as string[],
   },
   attractions: {
-    types: [],
-    mustInclude: [],
-    mustExclude: [],
+    types: [] as string[],
+    mustInclude: [] as string[],
+    mustExclude: [] as string[],
   },
   special: {
     notes: "",
-    accessibility: [],
-    dietaryRestrictions: [],
+    accessibility: [] as string[],
+    dietaryRestrictions: [] as string[],
   },
-};
+} as Partial<PlanPreferences>;
 
 export const useWizardStore = create<WizardState>((set, get) => ({
   currentStep: "destination",
