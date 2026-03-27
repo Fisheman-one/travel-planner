@@ -159,3 +159,56 @@ export type WizardStep =
   | "food"
   | "attractions"
   | "special";
+
+// 预算分解类型
+export type BudgetCategory = "attraction" | "meal" | "transport" | "accommodation" | "misc";
+
+export interface ActivityBudget {
+  category: BudgetCategory;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  unit: string;
+  subtotal: number;
+  note?: string;
+}
+
+export interface DailyBudget {
+  dayNumber: number;
+  date: string;
+  total: number;
+  breakdown: ActivityBudget[];
+}
+
+export interface BudgetBreakdown {
+  total: number;
+  attractionsTotal: number;
+  mealsTotal: number;
+  transportTotal: number;
+  accommodationTotal: number;
+  miscTotal: number;
+  perPersonTotal: number;
+  breakdown: ActivityBudget[];
+  dailyBreakdowns: DailyBudget[];
+}
+
+// 更新 DayPlan 添加预算分解
+export interface DayPlan {
+  dayNumber: number;
+  date: string;
+  theme: string;
+  attractions: Attraction[];
+  meals: Meals;
+  accommodation?: Accommodation;
+  dailyBudget: number;
+  budgetBreakdown?: ActivityBudget[];
+}
+
+// 更新 FullPlanResult 添加预算分解
+export interface FullPlanResult {
+  days: DayPlan[];
+  totalBudget: number;
+  highlights: string[];
+  tips: string[];
+  budgetBreakdown?: BudgetBreakdown;
+}

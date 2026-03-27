@@ -7,19 +7,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import html2canvas from "html2canvas";
 import { usePlanStore } from "@/store/planStore";
 import { useWizardStore } from "@/store/wizardStore";
-import { generateMockPlan } from "@/data/mock-itineraries";
-import { FullPlanResult, DayPlan } from "@/types/plan";
+import { FullPlanResult, DayPlan, ActivityBudget } from "@/types/plan";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Chip";
 import { Progress } from "@/components/ui/Progress";
-import { ArrowLeft, Map, List, Download, Share2, Loader2, Check } from "lucide-react";
+import { ArrowLeft, Map, List, Download, Share2, Loader2, Check, ChevronDown, ChevronUp, Wallet } from "lucide-react";
 import { formatCurrency, getDayColor } from "@/lib/utils";
 import { TravelMap } from "@/components/map/TravelMap";
 import { toast } from "sonner";
 import { GlamorousLoading } from "@/components/ui/GlamorousLoading";
 import { ParallaxBackground } from "@/components/ui/ParallaxBackground";
 import { FloatingTipsCard } from "@/components/ui/FloatingTipsCard";
+import { itineraryEngine } from "@/lib/itinerary-engine";
 
 // City images for parallax background
 const CITY_IMAGES: Record<string, string[]> = {
@@ -145,8 +145,9 @@ export default function ResultPage() {
 
     setTimeout(() => {
       clearInterval(interval);
-      const mockResult = generateMockPlan(preferences);
-      setResult(mockResult);
+      // 使用真实计算引擎生成行程
+      const realResult = itineraryEngine.generateItinerary(preferences);
+      setResult(realResult);
       setIsGenerating(false);
     }, 4000);
 
@@ -268,8 +269,12 @@ export default function ResultPage() {
   }
 
   const totalBudget =
+    result.budgetBreakdown?.total ||
     result.totalBudget ||
     result.days.reduce((sum, day) => sum + (day.dailyBudget || 0), 0);
+
+  const perPersonBudget = result.budgetBreakdown?.perPersonTotal || totalBudget;
+  const companionsCount = preferences.companions?.count || 1;
 
   const cityImages = CITY_IMAGES[preferences.destination?.city || "default"] || CITY_IMAGES.default;
 
@@ -306,14 +311,18 @@ export default function ResultPage() {
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
           <Card variant="elevated" padding="md" className="bg-gradient-to-r from-primary to-primary-light">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-white">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-white">
               <div>
                 <p className="text-white/70 text-sm">行程天数</p>
                 <p className="text-2xl font-bold mt-1">{result.days.length}天</p>
               </div>
               <div>
-                <p className="text-white/70 text-sm">预计花费</p>
-                <p className="text-2xl font-bold mt-1">{formatCurrency(totalBudget)}</p>
+                <p className="text-white/70 text-sm">总预算</p>
+                <p className="text-2xl font-bold mt-1 text-accent">{formatCurrency(totalBudget)}</p>
+              </div>
+              <div>
+                <p className="text-white/70 text-sm">人均</p>
+                <p className="text-xl font-bold mt-1">{formatCurrency(perPersonBudget)}</p>
               </div>
               <div>
                 <p className="text-white/70 text-sm">景点数量</p>
@@ -323,7 +332,7 @@ export default function ResultPage() {
               </div>
               <div>
                 <p className="text-white/70 text-sm">旅行风格</p>
-                <p className="text-2xl font-bold mt-1">
+                <p className="text-xl font-bold mt-1">
                   {preferences.budget?.level === "budget"
                     ? "经济"
                     : preferences.budget?.level === "moderate"
@@ -334,6 +343,58 @@ export default function ResultPage() {
                 </p>
               </div>
             </div>
+            {/* Budget Breakdown Mini Bar */}
+            {result.budgetBreakdown && (
+              <div className="mt-4 pt-4 border-t border-white/20">
+                <div className="flex items-center gap-2 text-sm text-white/70 mb-2">
+                  <Wallet className="w-4 h-4" />
+                  <span>预算构成</span>
+                </div>
+                <div className="flex h-3 rounded-full overflow-hidden bg-white/20">
+                  {result.budgetBreakdown.attractionsTotal > 0 && (
+                    <div
+                      className="bg-green-400"
+                      style={{ width: `${(result.budgetBreakdown.attractionsTotal / totalBudget) * 100}%` }}
+                      title="景点门票"
+                    />
+                  )}
+                  {result.budgetBreakdown.mealsTotal > 0 && (
+                    <div
+                      className="bg-orange-400"
+                      style={{ width: `${(result.budgetBreakdown.mealsTotal / totalBudget) * 100}%` }}
+                      title="餐饮"
+                    />
+                  )}
+                  {result.budgetBreakdown.transportTotal > 0 && (
+                    <div
+                      className="bg-blue-400"
+                      style={{ width: `${(result.budgetBreakdown.transportTotal / totalBudget) * 100}%` }}
+                      title="交通"
+                    />
+                  )}
+                  {result.budgetBreakdown.accommodationTotal > 0 && (
+                    <div
+                      className="bg-purple-400"
+                      style={{ width: `${(result.budgetBreakdown.accommodationTotal / totalBudget) * 100}%` }}
+                      title="住宿"
+                    />
+                  )}
+                  {result.budgetBreakdown.miscTotal > 0 && (
+                    <div
+                      className="bg-gray-400"
+                      style={{ width: `${(result.budgetBreakdown.miscTotal / totalBudget) * 100}%` }}
+                      title="杂费"
+                    />
+                  )}
+                </div>
+                <div className="flex gap-4 mt-2 text-xs text-white/60">
+                  <span>🎫 门票 {formatCurrency(result.budgetBreakdown.attractionsTotal)}</span>
+                  <span>🍜 餐饮 {formatCurrency(result.budgetBreakdown.mealsTotal)}</span>
+                  <span>🚌 交通 {formatCurrency(result.budgetBreakdown.transportTotal)}</span>
+                  <span>🏨 住宿 {formatCurrency(result.budgetBreakdown.accommodationTotal)}</span>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       </div>
@@ -534,6 +595,20 @@ function DayCard({ day, isSelected, onSelect }: DayCardProps) {
     0
   );
 
+  // Extract budget info from budgetBreakdown if available
+  const getAttractionBudget = (name: string) => {
+    return day.budgetBreakdown?.find(b => b.category === "attraction" && b.name === name);
+  };
+
+  const getMealBudget = (mealType: "breakfast" | "lunch" | "dinner") => {
+    const prefix = mealType === "breakfast" ? "早餐" : mealType === "lunch" ? "午餐" : "晚餐";
+    return day.budgetBreakdown?.find(b => b.category === "meal" && b.name.startsWith(prefix));
+  };
+
+  const getTransportBudget = () => {
+    return day.budgetBreakdown?.find(b => b.category === "transport");
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -594,9 +669,16 @@ function DayCard({ day, isSelected, onSelect }: DayCardProps) {
                         {attr.address}
                       </p>
                     </div>
-                    <Badge variant="default" className="bg-gray-100 text-text-muted">
-                      {attr.duration}分钟
-                    </Badge>
+                    <div className="text-right">
+                      <Badge variant="default" className="bg-gray-100 text-text-muted">
+                        {attr.duration}分钟
+                      </Badge>
+                      {getAttractionBudget(attr.name) && (
+                        <p className="text-xs text-accent font-medium mt-1">
+                          ¥{getAttractionBudget(attr.name)?.subtotal}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-4 mt-2 text-sm text-text-muted">
@@ -628,26 +710,53 @@ function DayCard({ day, isSelected, onSelect }: DayCardProps) {
               <div className="grid grid-cols-3 gap-4">
                 {day.meals.breakfast && (
                   <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-text-muted">早餐</p>
-                    <p className="font-medium text-primary text-sm">
-                      {day.meals.breakfast.name}
-                    </p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs text-text-muted">早餐</p>
+                        <p className="font-medium text-primary text-sm">
+                          {day.meals.breakfast.name}
+                        </p>
+                      </div>
+                      {getMealBudget("breakfast") && (
+                        <span className="text-xs text-accent font-medium">
+                          ¥{getMealBudget("breakfast")?.subtotal}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
                 {day.meals.lunch && (
                   <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-text-muted">午餐</p>
-                    <p className="font-medium text-primary text-sm">
-                      {day.meals.lunch.name}
-                    </p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs text-text-muted">午餐</p>
+                        <p className="font-medium text-primary text-sm">
+                          {day.meals.lunch.name}
+                        </p>
+                      </div>
+                      {getMealBudget("lunch") && (
+                        <span className="text-xs text-accent font-medium">
+                          ¥{getMealBudget("lunch")?.subtotal}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
                 {day.meals.dinner && (
                   <div className="p-3 bg-gray-50 rounded-xl">
-                    <p className="text-xs text-text-muted">晚餐</p>
-                    <p className="font-medium text-primary text-sm">
-                      {day.meals.dinner.name}
-                    </p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-xs text-text-muted">晚餐</p>
+                        <p className="font-medium text-primary text-sm">
+                          {day.meals.dinner.name}
+                        </p>
+                      </div>
+                      {getMealBudget("dinner") && (
+                        <span className="text-xs text-accent font-medium">
+                          ¥{getMealBudget("dinner")?.subtotal}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -669,9 +778,14 @@ function DayCard({ day, isSelected, onSelect }: DayCardProps) {
                     </p>
                   </div>
                   {day.accommodation.price && (
-                    <span className="text-accent font-bold">
-                      ¥{day.accommodation.price}/晚
-                    </span>
+                    <div className="text-right">
+                      <span className="text-accent font-bold">
+                        ¥{day.accommodation.price}/晚
+                      </span>
+                      <p className="text-xs text-text-muted">
+                        (人均约 ¥{Math.ceil(day.accommodation.price / 2)}/晚)
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -679,11 +793,29 @@ function DayCard({ day, isSelected, onSelect }: DayCardProps) {
           )}
 
           {/* Daily Budget */}
-          <div className="mt-6 pt-6 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-sm text-text-muted">当日预算</span>
-            <span className="text-lg font-bold text-accent">
-              {formatCurrency(day.dailyBudget)}
-            </span>
+          <div className="mt-6 pt-6 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-text-muted">当日预算</span>
+              <span className="text-lg font-bold text-accent">
+                {formatCurrency(day.dailyBudget)}
+              </span>
+            </div>
+            {day.budgetBreakdown && day.budgetBreakdown.length > 0 && (
+              <div className="text-xs text-text-muted space-y-1">
+                {day.budgetBreakdown.filter(b => b.category === "attraction").length > 0 && (
+                  <p>🎫 门票: ¥{day.budgetBreakdown.filter(b => b.category === "attraction").reduce((s, b) => s + b.subtotal, 0)}</p>
+                )}
+                {day.budgetBreakdown.filter(b => b.category === "meal").length > 0 && (
+                  <p>🍜 餐饮: ¥{day.budgetBreakdown.filter(b => b.category === "meal").reduce((s, b) => s + b.subtotal, 0)}</p>
+                )}
+                {day.budgetBreakdown.filter(b => b.category === "transport").length > 0 && (
+                  <p>🚌 交通: ¥{day.budgetBreakdown.filter(b => b.category === "transport").reduce((s, b) => s + b.subtotal, 0)}</p>
+                )}
+                {day.budgetBreakdown.filter(b => b.category === "accommodation").length > 0 && (
+                  <p>🏨 住宿: ¥{day.budgetBreakdown.filter(b => b.category === "accommodation").reduce((s, b) => s + b.subtotal, 0)}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </Card>
