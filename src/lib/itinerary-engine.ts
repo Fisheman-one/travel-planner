@@ -24,6 +24,8 @@ import {
   AttractionType,
 } from "@/types/plan";
 
+import { getScenicSpotsByCity, TianScenicSpot } from "@/lib/api-service";
+
 import {
   ATTRACTION_PRICES,
   ATTRACTION_DURATION,
@@ -670,6 +672,212 @@ export class ItineraryEngine {
     tips.push("热门景点建议提前在线购票");
 
     return tips;
+  }
+
+  /**
+   * 使用真实API景点数据生成行程（异步）
+   */
+  async generateItineraryWithRealAttractions(preferences: Partial<PlanPreferences>): Promise<FullPlanResult> {
+    const destination = preferences.destination || { city: "上海", country: "中国", coordinates: [121.47, 31.23] as [number, number] };
+    const dates = preferences.dates || { startDate: "2024-04-01", endDate: "2024-04-04", days: 3 };
+    const budget = preferences.budget || { level: "moderate" as BudgetLevel };
+    const companions = preferences.companions || { count: 1, relationship: "solo" as Relationship, ageRange: "26-30" as AgeRange };
+    const mobility = preferences.mobility || { fitnessLevel: "moderate" as FitnessLevel, mobilityAid: false, walkingTolerance: 5 };
+    const food = preferences.food || { preferences: ["local"] as FoodPreference[], budget: "moderate" as FoodBudget, mustTry: [] };
+    const attractions = preferences.attractions || { types: [] as AttractionType[], mustInclude: [], mustExclude: [] };
+
+    const city = destination.city;
+    const days = dates.days;
+    const peopleCount = companions.count;
+
+    // 1. 从API获取真实景点数据
+    const realAttractions = await getScenicSpotsByCity(city);
+
+    // 2. 将API景点转换为Attraction对象，匹配价格
+    const apiAttractionPool = this.convertApiAttractions(realAttractions, city);
+
+    // 3. 选择景点（根据类型偏好、体力）
+    const selectedAttractions = this.selectAttractionsFromPool(
+      city,
+      apiAttractionPool,
+      attractions.types,
+      {
+        fitnessLevel: mobility.fitnessLevel,
+        walkingTolerance: mobility.walkingTolerance,
+        mustInclude: attractions.mustInclude,
+        mustExclude: attractions.mustExclude,
+      }
+    );
+
+    // 4. 生成每日安排
+    const dailyPlans = this.generateDailyPlans(
+      city,
+      selectedAttractions,
+      days,
+      mobility.fitnessLevel,
+      budget.level
+    );
+
+    // 5. 计算餐饮
+    const allMeals = this.calculateMeals(city, days, food.budget, food.preferences);
+
+    // 6. 选择住宿
+    const accommodation = this.selectAccommodation(
+      city,
+      budget.level,
+      companions.ageRange
+    );
+
+    // 7. 计算每日预算分解
+    const { budgetBreakdown, dailyBreakdowns } = this.calculateBudgetBreakdown(
+      city,
+      dailyPlans,
+      allMeals,
+      accommodation,
+      companions
+    );
+
+    // 8. 组装最终结果
+    const resultDays: DayPlan[] = dailyPlans.map((dayAttractions, index) => ({
+      dayNumber: index + 1,
+      date: this.calculateDate(dates.startDate, index),
+      theme: this.generateDayTheme(dayAttractions, index, days),
+      attractions: dayAttractions,
+      meals: allMeals[index],
+      accommodation: index === 0 ? accommodation : undefined,
+      dailyBudget: dailyBreakdowns[index]?.total || 0,
+      budgetBreakdown: dailyBreakdowns[index]?.breakdown || [],
+    }));
+
+    // 9. 生成亮点和提示
+    const highlights = this.generateHighlights(resultDays);
+    const tips = this.generateTips(destination.city, mobility.fitnessLevel, budget.level);
+
+    return {
+      days: resultDays,
+      totalBudget: budgetBreakdown.total,
+      highlights,
+      tips,
+      budgetBreakdown,
+    };
+  }
+
+  /**
+   * 将API景点转换为Attraction对象
+   */
+  private convertApiAttractions(apiSpots: TianScenicSpot[], city: string): Attraction[] {
+    const prices = ATTRACTION_PRICES[city] || ATTRACTION_PRICES["上海"];
+
+    return apiSpots.map((spot, index) => {
+      // 尝试匹配已知价格，否则使用默认价格
+      const price = prices[spot.name] ?? this.estimateAttractionPrice(spot.name);
+      const type = this.guessAttractionType(spot.name);
+
+      return {
+        id: `attr_api_${city}_${index}`,
+        name: spot.name,
+        coordinates: [0, 0] as [number, number],
+        address: spot.city,
+        arrivalTime: "09:00",
+        departureTime: "12:00",
+        duration: 120,
+        transportation: { to: "地铁", duration: 30 },
+        ticketInfo: price === 0 ? "免费" : `¥${price}`,
+        highlights: [spot.content.substring(0, 50) + "..."],
+        tips: "",
+        type,
+        priority: index,
+      };
+    });
+  }
+
+  /**
+   * 估算景点门票价格（当没有确切价格时）
+   */
+  private estimateAttractionPrice(name: string): number {
+    // 免费景点特征词
+    const freeKeywords = ["公园", "广场", "古街", "老街", "博物馆", "纪念馆", "图书馆"];
+    for (const kw of freeKeywords) {
+      if (name.includes(kw)) return 0;
+    }
+
+    // 低价景点（20-40元）
+    const lowPriceKeywords = ["塔", "寺", "庙", "阁", "亭"];
+    for (const kw of lowPriceKeywords) {
+      if (name.includes(kw)) return 30;
+    }
+
+    // 中价景点（40-80元）
+    const midPriceKeywords = ["园", "馆", "宫", "城墙"];
+    for (const kw of midPriceKeywords) {
+      if (name.includes(kw)) return 60;
+    }
+
+    // 默认中等价格
+    return 50;
+  }
+
+  /**
+   * 从景点池中选择景点（兼容API数据和原有数据）
+   */
+  private selectAttractionsFromPool(
+    city: string,
+    pool: Attraction[],
+    types: string[],
+    options: {
+      fitnessLevel?: FitnessLevel;
+      walkingTolerance?: number;
+      mustInclude?: string[];
+      mustExclude?: string[];
+    }
+  ): Attraction[][] {
+    const fitnessLevel = options.fitnessLevel || "moderate";
+    const mustInclude = options.mustInclude || [];
+    const mustExclude = options.mustExclude || [];
+
+    // 过滤类型和排除项
+    let filtered = pool.filter((attr) => {
+      if (types.length > 0 && !types.includes(attr.type)) return false;
+      if (mustExclude.includes(attr.name)) return false;
+      return true;
+    });
+
+    // 按体力筛选游览时长
+    filtered = filtered.filter((attr) => {
+      const maxDuration = ATTRACTION_DURATION[attr.name]?.[fitnessLevel] ||
+        DEFAULT_ATTRACTION_DURATION[fitnessLevel];
+      return attr.duration <= maxDuration + 30;
+    });
+
+    // 必须包含的景点优先
+    const mustIncludeAttrs = filtered.filter((attr) => mustInclude.includes(attr.name));
+    const otherAttrs = filtered.filter((attr) => !mustInclude.includes(attr.name));
+
+    // 打乱其他景点顺序
+    const shuffled = this.shuffleArray(otherAttrs);
+
+    // 合并
+    const prioritized = [...mustIncludeAttrs, ...shuffled];
+
+    // 按体力决定每天景点数量
+    const attractionsPerDay = this.getAttractionsPerDay(fitnessLevel);
+    const days = 3;
+    const result: Attraction[][] = [];
+
+    for (let i = 0; i < days; i++) {
+      const start = i * attractionsPerDay;
+      const dayAttrs = prioritized.slice(start, start + attractionsPerDay);
+      if (dayAttrs.length > 0) {
+        result.push(dayAttrs);
+      }
+    }
+
+    // 确保每天至少有一个景点
+    while (result.length < days && result[result.length - 1]?.length >= attractionsPerDay) {
+      result.push([]);
+    }
+
+    return result.length > 0 ? result : [prioritized.slice(0, attractionsPerDay)];
   }
 
   /**

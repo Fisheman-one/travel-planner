@@ -145,10 +145,11 @@ export default function ResultPage() {
 
     setTimeout(() => {
       clearInterval(interval);
-      // 使用真实计算引擎生成行程
-      const realResult = itineraryEngine.generateItinerary(preferences);
-      setResult(realResult);
-      setIsGenerating(false);
+      // 使用真实API数据生成行程（异步）
+      itineraryEngine.generateItineraryWithRealAttractions(preferences).then((realResult) => {
+        setResult(realResult);
+        setIsGenerating(false);
+      });
     }, 4000);
 
     return () => clearInterval(interval);
