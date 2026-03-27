@@ -50,6 +50,12 @@ const CITY_SCENERY: Record<string, string[]> = {
     "https://images.unsplash.com/photo-1528181304800-259b08848526?w=800&q=80",
     "https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=800&q=80",
   ],
+  洛阳: [
+    "https://images.unsplash.com/photo-1569761208737-3c4a5c99fb2a?w=800&q=80",
+    "https://images.unsplash.com/photo-1547981609-4b6bfe67ca0b?w=800&q=80",
+    "https://images.unsplash.com/photo-1551269901-5c5e14c25df7?w=800&q=80",
+    "https://images.unsplash.com/photo-1596711715226-ac5c2f5a8a77?w=800&q=80",
+  ],
   default: [
     "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=800&q=80",
     "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=800&q=80",

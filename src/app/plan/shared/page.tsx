@@ -4,20 +4,11 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, getDayColor } from "@/lib/utils";
-import { ArrowLeft, Calendar, MapPin, Wallet } from "lucide-react";
+import { ArrowLeft, MapPin, Calendar, Wallet } from "lucide-react";
 import Link from "next/link";
-
-interface SharedAttraction {
-  name: string;
-  address?: string;
-  arrivalTime?: string;
-  departureTime?: string;
-  duration?: number;
-  type?: string;
-}
+import { TravelCardExporter } from "@/components/image/TravelCardExporter";
 
 interface SharedDay {
   n: number; // dayNumber
@@ -35,6 +26,7 @@ function SharedItineraryContent() {
   const searchParams = useSearchParams();
   const [planData, setPlanData] = useState<SharedPlanData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showCard, setShowCard] = useState(false);
 
   useEffect(() => {
     try {
@@ -78,6 +70,8 @@ function SharedItineraryContent() {
     );
   }
 
+  const totalAttractions = planData.days.reduce((sum, day) => sum + day.a.length, 0);
+
   return (
     <div className="min-h-screen bg-surface">
       {/* Header */}
@@ -114,7 +108,7 @@ function SharedItineraryContent() {
             <div className="relative">
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-16 h-16 bg-accent/20 rounded-2xl flex items-center justify-center text-3xl">
-                  🏖️
+                  🗺️
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-white">
@@ -138,10 +132,32 @@ function SharedItineraryContent() {
                 <div>
                   <p className="text-white/50 text-sm">景点数量</p>
                   <p className="text-2xl font-bold text-white">
-                    {planData.days.reduce((sum, day) => sum + day.a.length, 0)}个
+                    {totalAttractions}个
                   </p>
                 </div>
               </div>
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Travel Card Export Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-8"
+        >
+          <Card className="bg-gradient-to-r from-accent/5 to-accent/10 border border-accent/20 p-6">
+            <div className="text-center mb-4">
+              <h2 className="text-lg font-bold text-primary mb-2">
+                分享您的旅行计划
+              </h2>
+              <p className="text-text-muted text-sm">
+                生成一张精美的旅行卡片图片，让分享更美好！
+              </p>
+            </div>
+            <div className="flex justify-center">
+              <TravelCardExporter planData={planData} />
             </div>
           </Card>
         </motion.div>
@@ -171,6 +187,7 @@ function SharedItineraryContent() {
                       <span className="text-3xl font-bold">Day {day.n}</span>
                       <span className="text-white/80">{day.t}</span>
                     </div>
+                    <span className="text-sm text-white/60">{day.a.length}个景点</span>
                   </div>
                 </div>
 

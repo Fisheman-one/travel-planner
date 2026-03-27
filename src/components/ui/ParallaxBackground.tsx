@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { motion, useScroll, useTransform, useSpring } from "framer-motion";
 
 interface ParallaxBackgroundProps {
   images: string[];
@@ -11,24 +11,48 @@ interface ParallaxBackgroundProps {
 export function ParallaxBackground({ images, children }: ParallaxBackgroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const { scrollY } = useScroll();
+  const [isInView, setIsInView] = useState(false);
 
-  // Parallax transforms based on scroll
-  const backgroundY = useTransform(scrollY, [0, 1000], [0, 200]);
-  const opacity = useTransform(scrollY, [0, 300, 500], [0.6, 0.3, 0.1]);
+  const { scrollYProgress } = useScroll();
 
-  // Handle mouse movement for subtle parallax
+  // Smooth scroll progress
+  const smoothProgress = useSpring(scrollYProgress, {
+    stiffness: 100,
+    damping: 30,
+    restDelta: 0.001
+  });
+
+  // Parallax transforms based on scroll - move background slower than foreground
+  const backgroundY = useTransform(smoothProgress, [0, 1], ["0%", "30%"]);
+  const backgroundOpacity = useTransform(smoothProgress, [0, 0.5, 1], [0.7, 0.4, 0.15]);
+
+  // Handle mouse movement for subtle parallax (3D effect)
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const x = (e.clientX - rect.left - rect.width / 2) / rect.width;
-      const y = (e.clientY - rect.top - rect.height / 2) / rect.height;
+      // Normalize mouse position to -1 to 1
+      const x = (e.clientX / window.innerWidth - 0.5) * 2;
+      const y = (e.clientY / window.innerHeight - 0.5) * 2;
       setMousePosition({ x, y });
     };
 
     window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+
+    // Check if component is in view
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsInView(entry.isIntersecting);
+      },
+      { threshold: 0.1 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      observer.disconnect();
+    };
   }, []);
 
   if (images.length === 0) {
@@ -36,52 +60,66 @@ export function ParallaxBackground({ images, children }: ParallaxBackgroundProps
   }
 
   return (
-    <div ref={containerRef} className="relative overflow-hidden">
-      {/* Parallax Background Layer */}
+    <div ref={containerRef} className="relative min-h-screen">
+      {/* Parallax Background Layer - Fixed position for true parallax */}
       <motion.div
-        className="absolute inset-0 z-0"
-        style={{ y: backgroundY, opacity }}
+        className="fixed inset-0 z-0 will-change-transform"
+        style={{
+          y: backgroundY,
+          opacity: backgroundOpacity,
+        }}
       >
-        {/* Gradient Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-b from-surface via-surface/95 to-surface z-10" />
+        {/* Dark gradient overlay for readability */}
+        <div className="absolute inset-0 bg-gradient-to-b from-primary/40 via-primary/20 to-surface z-10" />
 
-        {/* Image Grid with Parallax */}
-        <div className="absolute inset-0 grid grid-cols-4 gap-1 p-1">
+        {/* Image Grid with Parallax - 3D card effect */}
+        <div className="absolute inset-0 grid grid-cols-4 grid-rows-2 gap-2 p-2">
           {images.slice(0, 8).map((image, index) => {
+            // Create varied depth illusion
             const isLarge = index < 2;
             const colSpan = isLarge ? "col-span-2" : "col-span-1";
             const rowSpan = isLarge ? "row-span-2" : "row-span-1";
 
-            // Different parallax speeds for different positions
-            const depth = (index % 3 + 1) * 0.3;
-            const offsetX = (mousePosition.x * depth * 20);
-            const offsetY = (mousePosition.y * depth * 20);
+            // Different parallax speeds create depth illusion
+            const depth = (index % 3 + 1) * 0.4;
+            const rotateY = mousePosition.x * depth * 3;
+            const rotateX = -mousePosition.y * depth * 3;
+            const translateX = mousePosition.x * depth * 15;
+            const translateY = mousePosition.y * depth * 15;
 
             return (
               <motion.div
                 key={index}
-                className={`relative overflow-hidden rounded-lg ${colSpan} ${rowSpan}`}
-                animate={{
-                  x: offsetX,
-                  y: offsetY,
+                className={`relative overflow-hidden rounded-2xl ${colSpan} ${rowSpan}`}
+                style={{
+                  perspective: "1000px",
                 }}
-                transition={{ type: "spring", stiffness: 100, damping: 30 }}
+                animate={{
+                  rotateX: rotateX,
+                  rotateY: rotateY,
+                  x: translateX,
+                  y: translateY,
+                }}
+                transition={{
+                  type: "spring",
+                  stiffness: 150,
+                  damping: 20,
+                  mass: 0.5
+                }}
               >
                 <div
-                  className="absolute inset-0 bg-cover bg-center"
+                  className="absolute inset-0 bg-cover bg-center transition-transform duration-300"
                   style={{
                     backgroundImage: `url(${image})`,
-                    transform: `scale(${1 + depth * 0.1})`,
+                    transform: `scale(1.1)`,
                   }}
                 />
-                <div className="absolute inset-0 bg-primary/30 hover:bg-transparent transition-colors duration-500" />
+                {/* Dark overlay for text readability */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/40 to-transparent" />
               </motion.div>
             );
           })}
         </div>
-
-        {/* Blur Overlay for depth effect */}
-        <div className="absolute inset-0 backdrop-blur-sm z-[5]" />
       </motion.div>
 
       {/* Content */}
